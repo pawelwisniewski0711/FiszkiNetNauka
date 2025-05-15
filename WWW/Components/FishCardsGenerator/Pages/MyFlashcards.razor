@@ -1,0 +1,442 @@
+@page "/myflashcards"
+
+@using System.ComponentModel.DataAnnotations
+@using FiszkiNetNauka.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using NaukaFiszek.Models
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject FiszkiNetDbContext DbContext
+@inject NavigationManager NavigationManager
+
+@rendermode InteractiveServer
+@attribute [Authorize]
+
+<PageTitle>Moje Fiszki</PageTitle>
+
+<div class="container">
+    <h1>Moje Fiszki</h1>
+    
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="input-group">
+                <input type="text" class="form-control" placeholder="Szukaj fiszek..." @bind="searchTerm" @bind:event="oninput" />
+                <button class="btn btn-outline-secondary" type="button" @onclick="ApplyFilters">
+                    <i class="oi oi-magnifying-glass"></i> Szukaj
+                </button>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <select class="form-select" @bind="sortBy">
+                <option value="newest">Najnowsze</option>
+                <option value="oldest">Najstarsze</option>
+                <option value="reviewDate">Termin powtórki</option>
+                <option value="front">Alfabetycznie (front)</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <div class="form-check form-switch mt-2">
+                <input class="form-check-input" type="checkbox" id="aiGeneratedOnly" @bind="aiGeneratedOnly" />
+                <label class="form-check-label" for="aiGeneratedOnly">Tylko generowane przez AI</label>
+            </div>
+        </div>
+    </div>
+    
+    @if (errorMessage != null)
+    {
+        <div class="alert alert-danger">
+            <strong>Błąd:</strong> @errorMessage
+        </div>
+    }
+    
+    @if (successMessage != null)
+    {
+        <div class="alert alert-success">
+            <strong>Sukces!</strong> @successMessage
+        </div>
+    }
+    
+    @if (isLoading)
+    {
+        <div class="d-flex justify-content-center">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Ładowanie...</span>
+            </div>
+        </div>
+    }
+    else if (userFlashcards == null || !userFlashcards.Any())
+    {
+        <div class="alert alert-info">
+            Nie masz jeszcze żadnych fiszek. Przejdź do sekcji <a href="flashcards">Generowanie Fiszek</a>, aby utworzyć swoje pierwsze fiszki.
+        </div>
+    }
+    else
+    {
+        <div class="row">
+            @foreach (var flashcard in userFlashcards)
+            {
+                <div class="col-md-6 mb-3">
+                    <div class="card h-100 @(IsOverdue(flashcard) ? "border-danger" : "")">
+                        <div class="card-header bg-primary text-white">
+                            @if (flashcard.IsEditing)
+                            {
+                                <input type="text" class="form-control" @bind="flashcard.Front" />
+                            }
+                            else
+                            {
+                                <strong>@flashcard.Front</strong>
+                            }
+                        </div>
+                        <div class="card-body">
+                            @if (flashcard.IsEditing)
+                            {
+                                <textarea class="form-control" rows="3" @bind="flashcard.Back"></textarea>
+                            }
+                            else
+                            {
+                                <p>@flashcard.Back</p>
+                                <div class="small text-muted mt-2">
+                                    <div><strong>Utworzono:</strong> @flashcard.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</div>
+                                    @if (flashcard.NextReviewDate.HasValue)
+                                    {
+                                        <div>
+                                            <strong>Następna powtórka:</strong> 
+                                            <span class="@(IsOverdue(flashcard) ? "text-danger" : "")">
+                                                @flashcard.NextReviewDate.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm")
+                                            </span>
+                                        </div>
+                                    }
+                                    <div><strong>Liczba powtórek:</strong> @flashcard.ReviewCount</div>
+                                </div>
+                            }
+                        </div>
+                        @if (!flashcard.IsEditing)
+                        {
+                            <div class="card-footer d-flex justify-content-between">
+                                <span class="badge @(flashcard.IsGeneratedByAI ? "bg-info" : "bg-secondary")">
+                                    @(flashcard.IsGeneratedByAI ? "Generowane przez AI" : "Utworzone ręcznie")
+                                </span>
+                                <div class="btn-group btn-group-sm">
+                                    <button class="btn btn-outline-primary" @onclick="() => ToggleEditMode(flashcard)">
+                                        <i class="oi oi-pencil me-1"></i>Edytuj
+                                    </button>
+                                    <button class="btn btn-outline-danger" @onclick="() => DeleteFlashcard(flashcard)">
+                                        <i class="oi oi-trash me-1"></i>Usuń
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                        @if (flashcard.IsEditing)
+                        {
+                            <div class="card-footer d-flex justify-content-end">
+                                <button class="btn btn-secondary me-2" @onclick="() => CancelEdit(flashcard)">
+                                    <i class="oi oi-x me-1"></i>Anuluj
+                                </button>
+                                <button class="btn btn-primary" @onclick="() => SaveFlashcard(flashcard)">
+                                    <i class="oi oi-check me-1"></i>Zapisz
+                                </button>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+        
+        <div class="d-flex justify-content-between align-items-center my-4">
+            <div>
+                <span>Wyświetlanie @userFlashcards.Count z @totalFlashcards fiszek</span>
+            </div>
+            <div>
+                <nav aria-label="Paginacja">
+                    <ul class="pagination">
+                        <li class="page-item @(currentPage == 1 ? "disabled" : "")">
+                            <button class="page-link" @onclick="() => ChangePage(currentPage - 1)" disabled="@(currentPage == 1)">
+                                <i class="oi oi-chevron-left"></i>
+                            </button>
+                        </li>
+                        @for (int i = startPage; i <= endPage; i++)
+                        {
+                            int pageNumber = i;
+                            <li class="page-item @(pageNumber == currentPage ? "active" : "")">
+                                <button class="page-link" @onclick="() => ChangePage(pageNumber)">@pageNumber</button>
+                            </li>
+                        }
+                        <li class="page-item @(currentPage == totalPages ? "disabled" : "")">
+                            <button class="page-link" @onclick="() => ChangePage(currentPage + 1)" disabled="@(currentPage == totalPages)">
+                                <i class="oi oi-chevron-right"></i>
+                            </button>
+                        </li>
+                    </ul>
+                </nav>
+            </div>
+        </div>
+    }
+</div>
+
+@if (showDeleteConfirm)
+{
+    <div class="modal fade show" style="display: block; background-color: rgba(0,0,0,0.5);" tabindex="-1" role="dialog">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Potwierdź usunięcie</h5>
+                    <button type="button" class="btn-close" @onclick="CancelDelete"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Czy na pewno chcesz usunąć fiszkę "<strong>@(flashcardToDelete?.Front)</strong>"?</p>
+                    <p class="text-danger">Tej operacji nie można cofnąć.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CancelDelete">Anuluj</button>
+                    <button type="button" class="btn btn-danger" @onclick="ConfirmDelete">Usuń</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<FlashcardViewModel> userFlashcards;
+    private bool isLoading = true;
+    private string errorMessage;
+    private string successMessage;
+    private string searchTerm = "";
+    private string sortBy = "newest";
+    private bool aiGeneratedOnly = false;
+    private string userId;
+    
+    // Paginacja
+    private int currentPage = 1;
+    private int pageSize = 10;
+    private int totalFlashcards = 0;
+    private int totalPages => (int)Math.Ceiling(totalFlashcards / (double)pageSize);
+    private int startPage => Math.Max(1, currentPage - 2);
+    private int endPage => Math.Min(startPage + 4, totalPages);
+    
+    // Delete confirmation
+    private bool showDeleteConfirm = false;
+    private FlashcardViewModel flashcardToDelete;
+    
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUserFlashcards();
+    }
+    
+    private async Task LoadUserFlashcards()
+    {
+        try
+        {
+            isLoading = true;
+            errorMessage = null;
+            
+            // Pobierz ID zalogowanego użytkownika
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+            
+            if (!user.Identity.IsAuthenticated)
+            {
+                NavigationManager.NavigateTo("/Account/Login", true);
+                return;
+            }
+            
+            userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            
+            // Budowanie zapytania z filtrami
+            var query = DbContext.Flashcards.AsQueryable().Where(f => f.UserId == userId);
+            
+            // Filtrowanie
+            if (!string.IsNullOrWhiteSpace(searchTerm))
+            {
+                query = query.Where(f => f.Front.Contains(searchTerm) || f.Back.Contains(searchTerm));
+            }
+            
+            if (aiGeneratedOnly)
+            {
+                query = query.Where(f => f.IsGeneratedByAI);
+            }
+            
+            // Liczba wszystkich pasujących fiszek
+            totalFlashcards = await query.CountAsync();
+            
+            // Sortowanie
+            query = sortBy switch
+            {
+                "oldest" => query.OrderBy(f => f.CreatedAt),
+                "reviewDate" => query.OrderBy(f => f.NextReviewDate == null).ThenBy(f => f.NextReviewDate),
+                "front" => query.OrderBy(f => f.Front),
+                _ => query.OrderByDescending(f => f.CreatedAt)
+            };
+            
+            // Paginacja
+            var flashcards = await query
+                .Skip((currentPage - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+            
+            // Mapowanie do ViewModel
+            userFlashcards = flashcards.Select(f => new FlashcardViewModel
+            {
+                Id = f.Id,
+                Front = f.Front,
+                Back = f.Back,
+                CreatedAt = f.CreatedAt,
+                UpdatedAt = f.UpdatedAt,
+                NextReviewDate = f.NextReviewDate,
+                ReviewCount = f.ReviewCount,
+                EaseFactor = f.EaseFactor,
+                IsGeneratedByAI = f.IsGeneratedByAI,
+                IsEditing = false
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Wystąpił błąd podczas ładowania fiszek: {ex.Message}";
+            userFlashcards = new List<FlashcardViewModel>();
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+    
+    private async Task ApplyFilters()
+    {
+        currentPage = 1; // Reset do pierwszej strony
+        await LoadUserFlashcards();
+    }
+    
+    private async Task ChangePage(int page)
+    {
+        if (page < 1 || page > totalPages || page == currentPage)
+            return;
+            
+        currentPage = page;
+        await LoadUserFlashcards();
+    }
+    
+    private void ToggleEditMode(FlashcardViewModel flashcard)
+    {
+        // Zresetuj edycję dla wszystkich innych fiszek
+        foreach (var f in userFlashcards.Where(f => f.Id != flashcard.Id && f.IsEditing))
+        {
+            f.IsEditing = false;
+        }
+        
+        flashcard.IsEditing = true;
+        // Zachowaj oryginalne wartości na wypadek anulowania edycji
+        flashcard.OriginalFront = flashcard.Front;
+        flashcard.OriginalBack = flashcard.Back;
+    }
+    
+    private void CancelEdit(FlashcardViewModel flashcard)
+    {
+        // Przywróć oryginalne wartości
+        flashcard.Front = flashcard.OriginalFront;
+        flashcard.Back = flashcard.OriginalBack;
+        flashcard.IsEditing = false;
+    }
+    
+    private async Task SaveFlashcard(FlashcardViewModel viewModel)
+    {
+        try
+        {
+            var flashcard = await DbContext.Flashcards.FindAsync(viewModel.Id);
+            if (flashcard != null && flashcard.UserId == userId)
+            {
+                flashcard.Front = viewModel.Front;
+                flashcard.Back = viewModel.Back;
+                flashcard.UpdatedAt = DateTimeOffset.Now;
+                
+                await DbContext.SaveChangesAsync();
+                
+                viewModel.IsEditing = false;
+                successMessage = "Fiszka została zaktualizowana.";
+                
+                // Ukryj powiadomienie po 3 sekundach
+                await HideSuccessMessage(3000);
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Wystąpił błąd podczas zapisywania fiszki: {ex.Message}";
+        }
+    }
+    
+    private void DeleteFlashcard(FlashcardViewModel flashcard)
+    {
+        flashcardToDelete = flashcard;
+        showDeleteConfirm = true;
+    }
+    
+    private void CancelDelete()
+    {
+        flashcardToDelete = null;
+        showDeleteConfirm = false;
+    }
+    
+    private async Task ConfirmDelete()
+    {
+        if (flashcardToDelete == null) return;
+        
+        try
+        {
+            var flashcard = await DbContext.Flashcards.FindAsync(flashcardToDelete.Id);
+            if (flashcard != null && flashcard.UserId == userId)
+            {
+                DbContext.Flashcards.Remove(flashcard);
+                await DbContext.SaveChangesAsync();
+                
+                userFlashcards.Remove(flashcardToDelete);
+                totalFlashcards--;
+                
+                if (userFlashcards.Count == 0 && currentPage > 1 && totalFlashcards > 0)
+                {
+                    currentPage--;
+                    await LoadUserFlashcards();
+                }
+                
+                successMessage = "Fiszka została usunięta.";
+                await HideSuccessMessage(3000);
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Wystąpił błąd podczas usuwania fiszki: {ex.Message}";
+        }
+        finally
+        {
+            flashcardToDelete = null;
+            showDeleteConfirm = false;
+        }
+    }
+    
+    private bool IsOverdue(FlashcardViewModel flashcard)
+    {
+        return flashcard.NextReviewDate.HasValue && flashcard.NextReviewDate.Value < DateTimeOffset.Now;
+    }
+    
+    private async Task HideSuccessMessage(int milliseconds)
+    {
+        await Task.Delay(milliseconds);
+        successMessage = null;
+        StateHasChanged();
+    }
+    
+    // ViewModel dla fiszek
+    private class FlashcardViewModel
+    {
+        public Guid Id { get; set; }
+        public string Front { get; set; }
+        public string Back { get; set; }
+        public DateTimeOffset CreatedAt { get; set; }
+        public DateTimeOffset UpdatedAt { get; set; }
+        public DateTimeOffset? NextReviewDate { get; set; }
+        public int ReviewCount { get; set; }
+        public decimal EaseFactor { get; set; }
+        public bool IsGeneratedByAI { get; set; }
+        public bool IsEditing { get; set; }
+        public string OriginalFront { get; set; }
+        public string OriginalBack { get; set; }
+    }
+} 

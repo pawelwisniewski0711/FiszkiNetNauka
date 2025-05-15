@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.11.35208.52
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "FiszkiNetNauka", "WWW\FiszkiNetNauka.csproj", "{F564AC6E-F918-4F0B-BBF1-FE1D8EA71B8B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FiszkiNetNaukaTests", "FiszkiNetNaukaTests\FiszkiNetNaukaTests.csproj", "{D510C5ED-55E6-451D-BA60-7BBB192A3B69}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{F564AC6E-F918-4F0B-BBF1-FE1D8EA71B8B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F564AC6E-F918-4F0B-BBF1-FE1D8EA71B8B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F564AC6E-F918-4F0B-BBF1-FE1D8EA71B8B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F564AC6E-F918-4F0B-BBF1-FE1D8EA71B8B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D510C5ED-55E6-451D-BA60-7BBB192A3B69}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D510C5ED-55E6-451D-BA60-7BBB192A3B69}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D510C5ED-55E6-451D-BA60-7BBB192A3B69}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D510C5ED-55E6-451D-BA60-7BBB192A3B69}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {C3DE8F5E-8E83-4130-B6D7-CF9B422C2061}
+	EndGlobalSection
+EndGlobal
